@@ -1,0 +1,10 @@
+{
+  "name": "Surfacing",
+  "description": "Generate spoilboard / timber surfacing G-code with configurable width, length, depth, stepover, and multi-pass Z cuts.",
+  "version": "1.0.0",
+  "layout": "full",
+  "layoutTablet": "full",
+  "entry": "index.html",
+  "icon": "icon.png",
+  "files": ["index.html"]
+}

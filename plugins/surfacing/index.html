@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surfacing</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg, #0c1018);
+  color: var(--text-primary, #e2e6f4);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+.sidebar {
+  width: 280px; min-width: 280px;
+  background: var(--surface, #151c28);
+  border-right: 1px solid var(--border, #222840);
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.section {
+  border-bottom: 1px solid var(--border, #222840);
+  padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.section-title {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-muted, #6a7898);
+  margin-bottom: 2px;
+}
+label { color: var(--text-muted, #6a7898); font-size: 12px; margin-top: 2px; }
+input[type=number], select {
+  width: 100%;
+  background: var(--elevated, #1a2235);
+  border: 1px solid var(--border, #222840);
+  border-radius: 4px;
+  color: var(--text-primary, #e2e6f4);
+  font-size: 14px; padding: 4px 8px; outline: none;
+}
+input[type=number]:focus, select:focus { border-color: var(--accent, #f0a030); }
+select { cursor: pointer; }
+
+.generate-btn {
+  margin: 12px 12px 4px; padding: 10px;
+  background: var(--accent, #f0a030); color: #000;
+  border: none; border-radius: 6px;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.generate-btn:hover { filter: brightness(1.1); }
+
+.action-bar {
+  padding: 8px 12px;
+  background: var(--surface, #151c28);
+  border-top: 1px solid var(--border, #222840);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.action-btn {
+  padding: 7px 14px;
+  background: var(--elevated, #1a2235);
+  border: 1px solid var(--border, #222840);
+  color: var(--text-primary, #e2e6f4);
+  border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.action-btn:hover { border-color: var(--accent, #f0a030); }
+.action-btn:disabled { opacity: .4; cursor: default; filter: none; }
+
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.stats-bar {
+  padding: 7px 14px;
+  background: var(--surface, #151c28);
+  border-bottom: 1px solid var(--border, #222840);
+  display: flex; gap: 20px; flex-shrink: 0; flex-wrap: wrap;
+}
+.stat { display: flex; flex-direction: column; gap: 1px; }
+.stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted, #6a7898); }
+.stat-value { font-size: 16px; font-weight: 600; color: var(--accent, #f0a030); font-family: ui-monospace, monospace; }
+
+.code-wrap {
+  flex: 1; overflow: auto; position: relative;
+}
+#gcode-output {
+  width: 100%; min-height: 100%;
+  background: var(--elevated, #1a2235);
+  border: none; outline: none; resize: none;
+  color: var(--text-primary, #e2e6f4);
+  font-family: ui-monospace, monospace;
+  font-size: 11px; line-height: 1.5;
+  padding: 12px; tab-size: 2;
+}
+
+#status { font-size: 12px; color: var(--text-muted, #6a7898); flex: 1; text-align: right; }
+#status.ok   { color: var(--ok,     #22c55e); }
+#status.err  { color: var(--danger, #ef4444); }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+
+    <div class="section">
+      <div class="section-title">Dimensions</div>
+      <label>Width (X) mm</label>
+      <input type="number" id="width" value="300" min="1" max="5000" step="1">
+      <label>Length (Y) mm</label>
+      <input type="number" id="length" value="300" min="1" max="5000" step="1">
+    </div>
+
+    <div class="section">
+      <div class="section-title">Cut Parameters</div>
+      <label>Total Depth of Cut (mm)</label>
+      <input type="number" id="depth" value="1" min="0.1" max="50" step="0.1">
+      <label>Number of Passes</label>
+      <input type="number" id="passes" value="1" min="1" max="50" step="1">
+      <label>Stepover (mm)</label>
+      <input type="number" id="stepover" value="12" min="0.1" max="200" step="0.5">
+      <label>Z Lift (mm)</label>
+      <input type="number" id="zlift" value="5" min="0.5" max="100" step="0.5">
+    </div>
+
+    <div class="section">
+      <div class="section-title">Speeds</div>
+      <label>Feed Rate (mm/min)</label>
+      <input type="number" id="feedrate" value="1500" min="1" max="20000" step="50">
+      <label>Plunge Rate (mm/min)</label>
+      <input type="number" id="plunge" value="300" min="1" max="5000" step="50">
+      <label>Travel Rate (mm/min)</label>
+      <input type="number" id="travel" value="3000" min="1" max="30000" step="100">
+      <label>Spindle Speed (RPM)</label>
+      <input type="number" id="spindle" value="10000" min="0" max="50000" step="500">
+    </div>
+
+    <div class="section" style="border-bottom:none">
+      <div class="section-title">Strategy</div>
+      <label>Cut Direction</label>
+      <select id="direction">
+        <option value="E">East (+X)</option>
+        <option value="W">West (-X)</option>
+        <option value="N">North (+Y)</option>
+        <option value="S">South (-Y)</option>
+      </select>
+      <label>Row Progression</label>
+      <select id="rowprog">
+        <option value="normal">Normal</option>
+        <option value="reverse">Reverse</option>
+      </select>
+    </div>
+
+    <button class="generate-btn" id="gen-btn" onclick="generate()">Generate G-code</button>
+
+  </div>
+
+  <div class="main">
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-label">Passes</div><div class="stat-value" id="s-passes">—</div></div>
+      <div class="stat"><div class="stat-label">Rows</div><div class="stat-value" id="s-rows">—</div></div>
+      <div class="stat"><div class="stat-label">Cut Dist</div><div class="stat-value" id="s-cut">—</div></div>
+      <div class="stat"><div class="stat-label">Travel Dist</div><div class="stat-value" id="s-travel">—</div></div>
+      <div class="stat"><div class="stat-label">Est. Time</div><div class="stat-value" id="s-time">—</div></div>
+    </div>
+
+    <div class="code-wrap">
+      <textarea id="gcode-output" readonly spellcheck="false" placeholder="Generated G-code will appear here..."></textarea>
+    </div>
+
+    <div class="action-bar">
+      <button class="action-btn" id="save-btn" onclick="saveGCode()" disabled>Save to Device</button>
+      <button class="action-btn" id="send-btn" onclick="sendGCode()" disabled>Send to Machine</button>
+      <span id="status"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+let msgId = 0
+const pending = {}
+
+function call(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = String(++msgId)
+    pending[id] = { resolve, reject }
+    window.parent.postMessage({ type: 'fluid-request', id, method, params: params ?? {} }, '*')
+  })
+}
+
+window.addEventListener('message', e => {
+  if (e.data?.type === 'fluid-response') {
+    const p = pending[e.data.id]
+    if (p) { delete pending[e.data.id]; e.data.error ? p.reject(new Error(e.data.error)) : p.resolve(e.data.result) }
+  }
+})
+
+let generatedCode = ''
+let settingsLoaded = false
+
+function fmt(v) { return v.toFixed(3) }
+
+function setStatus(msg, cls) {
+  const el = document.getElementById('status')
+  el.textContent = msg; el.className = cls || ''
+}
+
+function parseParams() {
+  return {
+    width:    Math.max(1,     parseFloat(document.getElementById('width').value)   || 300),
+    length:   Math.max(1,     parseFloat(document.getElementById('length').value)  || 300),
+    depth:    Math.max(0.1,   parseFloat(document.getElementById('depth').value)   || 1),
+    passes:   Math.max(1,     parseInt(document.getElementById('passes').value)    || 1),
+    stepover: Math.max(0.1,   parseFloat(document.getElementById('stepover').value)|| 12),
+    zlift:    Math.max(0.5,   parseFloat(document.getElementById('zlift').value)   || 5),
+    feedrate: Math.max(1,     parseInt(document.getElementById('feedrate').value)  || 1500),
+    plunge:   Math.max(1,     parseInt(document.getElementById('plunge').value)    || 300),
+    travel:   Math.max(1,     parseInt(document.getElementById('travel').value)    || 3000),
+    spindle:  Math.max(0,     parseInt(document.getElementById('spindle').value)   || 10000),
+    direction: document.getElementById('direction').value,
+    rowprog:   document.getElementById('rowprog').value,
+  }
+}
+
+const SETTINGS_FIELDS = ['width','length','depth','passes','stepover','zlift','feedrate','plunge','travel','spindle','direction','rowprog']
+
+function setFormValue(id, val) {
+  const el = document.getElementById(id)
+  if (el === null) return
+  if (el.tagName === 'SELECT') el.value = val
+  else el.value = val
+}
+
+async function loadSettings() {
+  try {
+    const s = await call('getSettings')
+    if (s && Object.keys(s).length) {
+      for (const key of SETTINGS_FIELDS) {
+        if (s[key] !== undefined) setFormValue(key, s[key])
+      }
+    }
+  } catch (_) {}
+  settingsLoaded = true
+}
+
+async function saveSettings() {
+  const p = parseParams()
+  const data = {}
+  for (const key of SETTINGS_FIELDS) data[key] = p[key]
+  try { await call('saveSettings', { data }) } catch (_) {}
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return m > 0 ? `${m}m${s}s` : `${s}s`
+}
+
+function generate() {
+  const p = parseParams()
+  const lines = []
+
+  const header = () => {
+    lines.push('( Spoilboard / timber surfacing )')
+    lines.push(`( Width: ${p.width} mm, Length: ${p.length} mm )`)
+    lines.push(`( Total depth: ${p.depth} mm, Passes: ${p.passes} )`)
+    lines.push(`( Stepover: ${p.stepover} mm, Direction: ${p.direction} )`)
+    lines.push(`( Feed: ${p.feedrate} mm/min, Plunge: ${p.plunge} mm/min, Travel: ${p.travel} mm/min )`)
+    lines.push('G17 G21 G90 G94')
+    lines.push(`M3 S${p.spindle}`)
+  }
+
+  const footer = () => {
+    lines.push('M5')
+    lines.push('M30')
+  }
+
+  header()
+
+  const xmin = 0, ymin = 0, xmax = p.width, ymax = p.length
+
+  let totalCutDist = 0
+  let totalTravelDist = 0
+  let totalRows = 0
+  const zIncrement = p.depth / p.passes
+  let lastX = 0, lastY = 0
+
+  for (let pass = 1; pass <= p.passes; pass++) {
+    const currentZ = -(zIncrement * pass)
+
+    lines.push(`( Pass ${pass} / ${p.passes} — Z ${fmt(currentZ)} mm )`)
+
+    let strokestart, strokeend, rowstart, rowend, horiz
+
+    if (p.direction === 'E') {
+      strokestart = xmin; strokeend = xmax
+      rowstart = p.rowprog === 'reverse' ? ymin : ymax
+      rowend   = p.rowprog === 'reverse' ? ymax : ymin
+      horiz = true
+    } else if (p.direction === 'W') {
+      strokestart = xmax; strokeend = xmin
+      rowstart = p.rowprog === 'reverse' ? ymax : ymin
+      rowend   = p.rowprog === 'reverse' ? ymin : ymax
+      horiz = true
+    } else if (p.direction === 'N') {
+      strokestart = ymin; strokeend = ymax
+      rowstart = p.rowprog === 'reverse' ? xmax : xmin
+      rowend   = p.rowprog === 'reverse' ? xmin : xmax
+      horiz = false
+    } else {
+      strokestart = ymax; strokeend = ymin
+      rowstart = p.rowprog === 'reverse' ? xmin : xmax
+      rowend   = p.rowprog === 'reverse' ? xmax : xmin
+      horiz = false
+    }
+
+    const nrows = Math.ceil(Math.abs(rowend - rowstart) / p.stepover) + 1
+    const rowstep = (rowend - rowstart) / (nrows - 1)
+    totalRows += nrows
+
+    for (let row = 0; row < nrows; row++) {
+      const rowcoord = rowstart + row * rowstep
+      const cutLen = Math.abs(strokeend - strokestart)
+      totalCutDist += cutLen
+
+      if (row > 0 || pass > 1) {
+        const tx = horiz ? strokestart : rowcoord
+        const ty = horiz ? rowcoord : strokestart
+        totalTravelDist += Math.sqrt((tx - lastX) ** 2 + (ty - lastY) ** 2)
+      }
+
+      if (horiz) {
+        lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+        lines.push(`G0 X${fmt(strokestart)} Y${fmt(rowcoord)} F${p.travel}`)
+        lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+        lines.push(`G1 X${fmt(strokeend)} F${p.feedrate}`)
+        lastX = strokeend; lastY = rowcoord
+      } else {
+        lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+        lines.push(`G0 X${fmt(rowcoord)} Y${fmt(strokestart)} F${p.travel}`)
+        lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+        lines.push(`G1 Y${fmt(strokeend)} F${p.feedrate}`)
+        lastX = rowcoord; lastY = strokeend
+      }
+    }
+
+    lines.push(`G0 Z${fmt(p.zlift)}`)
+  }
+
+  footer()
+
+  generatedCode = lines.join('\n')
+
+  document.getElementById('gcode-output').value = generatedCode
+  document.getElementById('save-btn').disabled = false
+  document.getElementById('send-btn').disabled = false
+
+  const plunges = totalRows * p.passes
+  const liftDist = plunges * (p.zlift + p.depth) * 2
+  const totalSec = totalCutDist / p.feedrate * 60
+                 + totalTravelDist / p.travel * 60
+                 + liftDist / p.plunge * 60
+
+  document.getElementById('s-passes').textContent  = p.passes
+  document.getElementById('s-rows').textContent    = totalRows
+  document.getElementById('s-cut').textContent     = Math.round(totalCutDist) + ' mm'
+  document.getElementById('s-travel').textContent   = Math.round(totalTravelDist) + ' mm'
+  document.getElementById('s-time').textContent     = formatTime(totalSec)
+
+  setStatus(`${lines.length} lines generated`, 'ok')
+
+  saveSettings()
+}
+
+async function saveGCode() {
+  if (!generatedCode) return
+  const name = `surfacing_${Date.now()}`
+  try {
+    await call('writeFile', { path: `/sd/${name}.nc`, content: generatedCode, fs: 'sd' })
+    setStatus(`Saved as /sd/${name}.nc`, 'ok')
+  } catch (e) {
+    setStatus(`Save failed: ${e.message}`, 'err')
+  }
+}
+
+async function sendGCode() {
+  if (!generatedCode) return
+  const lines = generatedCode.split('\n')
+  setStatus(`Sending ${lines.length} lines...`, '')
+  try {
+    for (const line of lines) {
+      if (line.trim() && !line.trim().startsWith('(')) {
+        await call('sendCommand', { command: line.trim() })
+      }
+    }
+    setStatus('Sent to machine', 'ok')
+  } catch (e) {
+    setStatus(`Send failed: ${e.message}`, 'err')
+  }
+}
+
+window.addEventListener('load', loadSettings)
+</script>
+</body>
+</html>
