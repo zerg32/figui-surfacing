@@ -5,3 +5,5 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+FigUI/
+gcode_tpgen/
