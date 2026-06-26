@@ -117,6 +117,8 @@ select { cursor: pointer; }
       <input type="number" id="width" value="300" min="1" max="5000" step="1">
       <label>Length (Y) mm</label>
       <input type="number" id="length" value="300" min="1" max="5000" step="1">
+      <label>Tool Diameter (mm)</label>
+      <input type="number" id="toolDia" value="0" min="0" max="200" step="0.5">
     </div>
 
     <div class="section">
@@ -129,6 +131,17 @@ select { cursor: pointer; }
       <input type="number" id="stepover" value="12" min="0.1" max="200" step="0.5">
       <label>Z Lift (mm)</label>
       <input type="number" id="zlift" value="5" min="0.5" max="100" step="0.5">
+    </div>
+
+    <div class="section">
+      <div class="section-title">Finish Pass</div>
+      <label class="check-label">
+        <input type="checkbox" id="finishEnabled"> Enable finish pass
+      </label>
+      <label>Finish Stepover (mm)</label>
+      <input type="number" id="finishStepover" value="6" min="0.1" max="100" step="0.5">
+      <label>Finish Stock (mm)</label>
+      <input type="number" id="finishStock" value="0.2" min="0.01" max="10" step="0.05">
     </div>
 
     <div class="section">
@@ -157,6 +170,9 @@ select { cursor: pointer; }
         <option value="normal">Normal</option>
         <option value="reverse">Reverse</option>
       </select>
+      <label class="check-label">
+        <input type="checkbox" id="zigzag"> Zigzag roughing (bidirectional, no lifts between rows)
+      </label>
       <label class="check-label">
         <input type="checkbox" id="dryrun"> Dry Run (trace perimeter at Z lift then pause before cutting)
       </label>
@@ -223,18 +239,23 @@ function parseParams() {
     depth:    Math.max(0.1,   parseFloat(document.getElementById('depth').value)   || 1),
     passes:   Math.max(1,     parseInt(document.getElementById('passes').value)    || 1),
     stepover: Math.max(0.1,   parseFloat(document.getElementById('stepover').value)|| 12),
+    toolDia:  Math.max(0,     parseFloat(document.getElementById('toolDia').value) || 0),
     zlift:    Math.max(0.5,   parseFloat(document.getElementById('zlift').value)   || 5),
+    finishEnabled: document.getElementById('finishEnabled').checked,
+    finishStepover: Math.max(0.1, parseFloat(document.getElementById('finishStepover').value) || 6),
+    finishStock:   Math.max(0.01, parseFloat(document.getElementById('finishStock').value) || 0.2),
     feedrate: Math.max(1,     parseInt(document.getElementById('feedrate').value)  || 1500),
     plunge:   Math.max(1,     parseInt(document.getElementById('plunge').value)    || 300),
     travel:   Math.max(1,     parseInt(document.getElementById('travel').value)    || 3000),
     spindle:  Math.max(0,     parseInt(document.getElementById('spindle').value)   || 10000),
+    zigzag:   document.getElementById('zigzag').checked,
     dryrun:   document.getElementById('dryrun').checked,
     direction: document.getElementById('direction').value,
     rowprog:   document.getElementById('rowprog').value,
   }
 }
 
-const SETTINGS_FIELDS = ['width','length','depth','passes','stepover','zlift','feedrate','plunge','travel','spindle','dryrun','direction','rowprog']
+const SETTINGS_FIELDS = ['width','length','depth','passes','stepover','toolDia','zlift','finishEnabled','finishStepover','finishStock','feedrate','plunge','travel','spindle','zigzag','dryrun','direction','rowprog']
 
 function setFormValue(id, val) {
   const el = document.getElementById(id)
@@ -301,73 +322,122 @@ function generate() {
   }
 
   const xmin = 0, ymin = 0, xmax = p.width, ymax = p.length
+  const overshoot = p.toolDia > 0 ? p.toolDia / 2 : 0
+  const useFinish = p.finishEnabled && p.passes >= 1
+  const roughCount = useFinish && p.passes > 1 ? p.passes - 1 : p.passes
 
   let totalCutDist = 0
   let totalTravelDist = 0
   let totalRows = 0
-  const zIncrement = p.depth / p.passes
   let lastX = 0, lastY = 0
 
   for (let pass = 1; pass <= p.passes; pass++) {
-    const currentZ = -(zIncrement * pass)
+    const isFinish = useFinish && pass === p.passes
 
-    lines.push(`( Pass ${pass} / ${p.passes} — Z ${fmt(currentZ)} mm )`)
+    let currentZ, stepover, zigzag
+    if (isFinish) {
+      currentZ = -p.depth
+      stepover = p.finishStepover
+      zigzag = false
+    } else {
+      const effectiveDepth = useFinish ? (p.depth - p.finishStock) : p.depth
+      const zIncrement = effectiveDepth / roughCount
+      currentZ = -(zIncrement * pass)
+      stepover = p.stepover
+      zigzag = p.zigzag
+    }
+
+    lines.push(`( Pass ${pass} / ${p.passes} — Z ${fmt(currentZ)} mm ${isFinish ? '(finish)' : ''} )`)
 
     let strokestart, strokeend, rowstart, rowend, horiz
 
     if (p.direction === 'E') {
-      strokestart = xmin; strokeend = xmax
+      strokestart = xmin - overshoot; strokeend = xmax + overshoot
       rowstart = p.rowprog === 'reverse' ? ymin : ymax
       rowend   = p.rowprog === 'reverse' ? ymax : ymin
       horiz = true
     } else if (p.direction === 'W') {
-      strokestart = xmax; strokeend = xmin
+      strokestart = xmax + overshoot; strokeend = xmin - overshoot
       rowstart = p.rowprog === 'reverse' ? ymax : ymin
       rowend   = p.rowprog === 'reverse' ? ymin : ymax
       horiz = true
     } else if (p.direction === 'N') {
-      strokestart = ymin; strokeend = ymax
+      strokestart = ymin - overshoot; strokeend = ymax + overshoot
       rowstart = p.rowprog === 'reverse' ? xmax : xmin
       rowend   = p.rowprog === 'reverse' ? xmin : xmax
       horiz = false
     } else {
-      strokestart = ymax; strokeend = ymin
+      strokestart = ymax + overshoot; strokeend = ymin - overshoot
       rowstart = p.rowprog === 'reverse' ? xmin : xmax
       rowend   = p.rowprog === 'reverse' ? xmax : xmin
       horiz = false
     }
 
-    const nrows = Math.ceil(Math.abs(rowend - rowstart) / p.stepover) + 1
+    const nrows = Math.ceil(Math.abs(rowend - rowstart) / stepover) + 1
     const rowstep = (rowend - rowstart) / (nrows - 1)
     totalRows += nrows
 
+    if (zigzag && nrows > 0) {
+      lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+      const sX = horiz ? strokestart : rowstart
+      const sY = horiz ? rowstart : strokestart
+      lines.push(`G0 X${fmt(sX)} Y${fmt(sY)} F${p.travel}`)
+      lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+      lastX = sX; lastY = sY
+    }
+
     for (let row = 0; row < nrows; row++) {
       const rowcoord = rowstart + row * rowstep
-      const cutLen = Math.abs(strokeend - strokestart)
+      const even = row % 2 === 0
+      const a = even ? strokestart : strokeend
+      const b = even ? strokeend : strokestart
+      const cutLen = Math.abs(b - a)
       totalCutDist += cutLen
 
-      if (row > 0 || pass > 1) {
-        const tx = horiz ? strokestart : rowcoord
-        const ty = horiz ? rowcoord : strokestart
-        totalTravelDist += Math.sqrt((tx - lastX) ** 2 + (ty - lastY) ** 2)
-      }
-
-      if (horiz) {
-        lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
-        lines.push(`G0 X${fmt(strokestart)} Y${fmt(rowcoord)} F${p.travel}`)
-        lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
-        lines.push(`G1 X${fmt(strokeend)} F${p.feedrate}`)
-        lastX = strokeend; lastY = rowcoord
+      if (zigzag) {
+        if (row > 0) {
+          if (horiz) {
+            totalTravelDist += Math.abs(rowcoord - lastY)
+            lines.push(`G1 Y${fmt(rowcoord)} F${p.feedrate}`)
+          } else {
+            totalTravelDist += Math.abs(rowcoord - lastX)
+            lines.push(`G1 X${fmt(rowcoord)} F${p.feedrate}`)
+          }
+        }
+        if (horiz) {
+          lines.push(`G1 X${fmt(b)} F${p.feedrate}`)
+          lastX = b; lastY = rowcoord
+        } else {
+          lines.push(`G1 Y${fmt(b)} F${p.feedrate}`)
+          lastX = rowcoord; lastY = b
+        }
       } else {
+        if (row > 0 || pass > 1) {
+          const tx = horiz ? strokestart : rowcoord
+          const ty = horiz ? rowcoord : strokestart
+          totalTravelDist += Math.sqrt((tx - lastX) ** 2 + (ty - lastY) ** 2)
+        }
+
         lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
-        lines.push(`G0 X${fmt(rowcoord)} Y${fmt(strokestart)} F${p.travel}`)
-        lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
-        lines.push(`G1 Y${fmt(strokeend)} F${p.feedrate}`)
-        lastX = rowcoord; lastY = strokeend
+        if (horiz) {
+          lines.push(`G0 X${fmt(strokestart)} Y${fmt(rowcoord)} F${p.travel}`)
+          lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+          lines.push(`G1 X${fmt(strokeend)} F${p.feedrate}`)
+          lastX = strokeend; lastY = rowcoord
+        } else {
+          lines.push(`G0 X${fmt(rowcoord)} Y${fmt(strokestart)} F${p.travel}`)
+          lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+          lines.push(`G1 Y${fmt(strokeend)} F${p.feedrate}`)
+          lastX = rowcoord; lastY = strokeend
+        }
       }
     }
 
-    lines.push(`G0 Z${fmt(p.zlift)}`)
+    if (zigzag) {
+      lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+    } else {
+      lines.push(`G0 Z${fmt(p.zlift)}`)
+    }
   }
 
   footer()
