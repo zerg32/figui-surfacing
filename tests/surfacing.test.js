@@ -198,7 +198,9 @@ describe('row and stepover calculation', () => {
     const rapidY = lines
       .filter(l => l.startsWith('G0') && l.includes('Y'))
       .map(l => parseFloat(l.match(/Y([\d.]+)/)[1]))
-    expect(rapidY).toEqual([100, 75, 50, 25, 0])
+    // row coordinates (descending) + final return-to-zero
+    expect(rapidY.slice(0, 5)).toEqual([100, 75, 50, 25, 0])
+    expect(rapidY.at(-1)).toBe(0)
   })
 
   it('reverse row progression flips Y coordinates', () => {
@@ -208,7 +210,9 @@ describe('row and stepover calculation', () => {
     const rapidY = lines
       .filter(l => l.startsWith('G0') && l.includes('Y'))
       .map(l => parseFloat(l.match(/Y([\d.]+)/)[1]))
-    expect(rapidY).toEqual([0, 25, 50, 75, 100])
+    // row coordinates (ascending) + final return-to-zero
+    expect(rapidY.slice(0, 5)).toEqual([0, 25, 50, 75, 100])
+    expect(rapidY.at(-1)).toBe(0)
   })
 
   it('north direction cuts along Y with correct X rows', () => {

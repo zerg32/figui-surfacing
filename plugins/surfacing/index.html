@@ -196,7 +196,7 @@ select { cursor: pointer; }
     </div>
 
     <div class="action-bar">
-      <button class="action-btn" id="save-btn" onclick="saveGCode()" disabled>Save to Device</button>
+      <button class="action-btn" id="save-btn" onclick="saveGCode()" disabled>Save to SD Card</button>
       <button class="action-btn" id="send-btn" onclick="sendGCode()" disabled>Send to Machine</button>
       <span id="status"></span>
     </div>
@@ -257,17 +257,27 @@ function parseParams() {
 
 const SETTINGS_FIELDS = ['width','length','depth','passes','stepover','toolDia','zlift','finishEnabled','finishStepover','finishStock','feedrate','plunge','travel','spindle','zigzag','dryrun','direction','rowprog']
 
+function settingsFS() {
+  return document.baseURI.includes('/sd/') ? 'sd' : 'local'
+}
+
+function settingsPath() {
+  const base = settingsFS() === 'sd' ? '/sd' : ''
+  return `${base}/plugins/surfacing/settings.json`
+}
+
 function setFormValue(id, val) {
   const el = document.getElementById(id)
   if (el === null) return
-  if (el.tagName === 'SELECT') el.value = val
+  if (el.type === 'checkbox') el.checked = !!val
   else el.value = val
 }
 
 async function loadSettings() {
   try {
-    const s = await call('getSettings')
-    if (s && Object.keys(s).length) {
+    const text = await call('readFile', { path: settingsPath(), fs: settingsFS() })
+    const s = JSON.parse(text)
+    if (s && typeof s === 'object') {
       for (const key of SETTINGS_FIELDS) {
         if (s[key] !== undefined) setFormValue(key, s[key])
       }
@@ -280,7 +290,7 @@ async function saveSettings() {
   const p = parseParams()
   const data = {}
   for (const key of SETTINGS_FIELDS) data[key] = p[key]
-  try { await call('saveSettings', { data }) } catch (_) {}
+  try { await call('writeFile', { path: settingsPath(), content: JSON.stringify(data), fs: settingsFS() }) } catch (_) {}
 }
 
 function formatTime(seconds) {
@@ -304,6 +314,8 @@ function generate() {
   }
 
   const footer = () => {
+    lines.push(`G0 Z${fmt(p.zlift)}`)
+    lines.push(`G0 X${fmt(0)} Y${fmt(0)}`)
     lines.push('M5')
     lines.push('M30')
   }
@@ -433,10 +445,12 @@ function generate() {
       }
     }
 
-    if (zigzag) {
-      lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
-    } else {
-      lines.push(`G0 Z${fmt(p.zlift)}`)
+    if (pass < p.passes) {
+      if (zigzag) {
+        lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+      } else {
+        lines.push(`G0 Z${fmt(p.zlift)}`)
+      }
     }
   }
 
@@ -446,7 +460,7 @@ function generate() {
 
   document.getElementById('gcode-output').value = generatedCode
   document.getElementById('save-btn').disabled = false
-  document.getElementById('send-btn').disabled = false
+  // document.getElementById('send-btn').disabled = false
 
   const plunges = totalRows * p.passes
   const liftDist = plunges * (p.zlift + p.depth) * 2
@@ -478,15 +492,15 @@ async function saveGCode() {
 
 async function sendGCode() {
   if (!generatedCode) return
-  const lines = generatedCode.split('\n')
+  const lines = generatedCode.split('\n').filter(l => l.trim() && !l.trim().startsWith('('))
   setStatus(`Sending ${lines.length} lines...`, '')
   try {
     for (const line of lines) {
-      if (line.trim() && !line.trim().startsWith('(')) {
-        await call('sendCommand', { command: line.trim() })
-      }
+      await call('sendCommand', { command: line.trim() })
+      await new Promise(r => setTimeout(r, 100))
     }
     setStatus('Sent to machine', 'ok')
+    setTimeout(() => call('close'), 500)
   } catch (e) {
     setStatus(`Send failed: ${e.message}`, 'err')
   }
