@@ -37,6 +37,11 @@ body {
   margin-bottom: 2px;
 }
 label { color: var(--text-muted, #6a7898); font-size: 12px; margin-top: 2px; }
+input[type=checkbox] { accent-color: var(--accent, #f0a030); width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+label.check-label {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-primary, #e2e6f4); font-size: 12px; cursor: pointer; margin-top: 4px;
+}
 input[type=number], select {
   width: 100%;
   background: var(--elevated, #1a2235);
@@ -152,6 +157,9 @@ select { cursor: pointer; }
         <option value="normal">Normal</option>
         <option value="reverse">Reverse</option>
       </select>
+      <label class="check-label">
+        <input type="checkbox" id="dryrun"> Dry Run (trace perimeter at Z lift then pause before cutting)
+      </label>
     </div>
 
     <button class="generate-btn" id="gen-btn" onclick="generate()">Generate G-code</button>
@@ -220,12 +228,13 @@ function parseParams() {
     plunge:   Math.max(1,     parseInt(document.getElementById('plunge').value)    || 300),
     travel:   Math.max(1,     parseInt(document.getElementById('travel').value)    || 3000),
     spindle:  Math.max(0,     parseInt(document.getElementById('spindle').value)   || 10000),
+    dryrun:   document.getElementById('dryrun').checked,
     direction: document.getElementById('direction').value,
     rowprog:   document.getElementById('rowprog').value,
   }
 }
 
-const SETTINGS_FIELDS = ['width','length','depth','passes','stepover','zlift','feedrate','plunge','travel','spindle','direction','rowprog']
+const SETTINGS_FIELDS = ['width','length','depth','passes','stepover','zlift','feedrate','plunge','travel','spindle','dryrun','direction','rowprog']
 
 function setFormValue(id, val) {
   const el = document.getElementById(id)
@@ -279,6 +288,17 @@ function generate() {
   }
 
   header()
+
+  if (p.dryrun) {
+    lines.push('( Dry run — tracing perimeter at safe height )')
+    lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+    lines.push(`G0 X0 Y0 F${p.travel}`)
+    lines.push(`G0 X${fmt(p.width)} Y0 F${p.travel}`)
+    lines.push(`G0 X${fmt(p.width)} Y${fmt(p.length)} F${p.travel}`)
+    lines.push(`G0 X0 Y${fmt(p.length)} F${p.travel}`)
+    lines.push(`G0 X0 Y0 F${p.travel}`)
+    lines.push('M0 ( Dry run complete — check position then press cycle start )')
+  }
 
   const xmin = 0, ymin = 0, xmax = p.width, ymax = p.length
 
