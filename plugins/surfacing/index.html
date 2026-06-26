@@ -313,11 +313,11 @@ function generate() {
   if (p.dryrun) {
     lines.push('( Dry run — tracing perimeter at safe height )')
     lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
-    lines.push(`G0 X0 Y0 F${p.travel}`)
-    lines.push(`G0 X${fmt(p.width)} Y0 F${p.travel}`)
+    lines.push(`G0 X${fmt(0)} Y${fmt(0)} F${p.travel}`)
+    lines.push(`G0 X${fmt(p.width)} Y${fmt(0)} F${p.travel}`)
     lines.push(`G0 X${fmt(p.width)} Y${fmt(p.length)} F${p.travel}`)
-    lines.push(`G0 X0 Y${fmt(p.length)} F${p.travel}`)
-    lines.push(`G0 X0 Y0 F${p.travel}`)
+    lines.push(`G0 X${fmt(0)} Y${fmt(p.length)} F${p.travel}`)
+    lines.push(`G0 X${fmt(0)} Y${fmt(0)} F${p.travel}`)
     lines.push('M0 ( Dry run complete — check position then press cycle start )')
   }
 
