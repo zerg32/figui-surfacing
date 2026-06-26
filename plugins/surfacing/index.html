@@ -460,7 +460,7 @@ function generate() {
 
   document.getElementById('gcode-output').value = generatedCode
   document.getElementById('save-btn').disabled = false
-  // document.getElementById('send-btn').disabled = false
+  document.getElementById('send-btn').disabled = false
 
   const plunges = totalRows * p.passes
   const liftDist = plunges * (p.zlift + p.depth) * 2
@@ -492,14 +492,13 @@ async function saveGCode() {
 
 async function sendGCode() {
   if (!generatedCode) return
-  const lines = generatedCode.split('\n').filter(l => l.trim() && !l.trim().startsWith('('))
-  setStatus(`Sending ${lines.length} lines...`, '')
+  const name = `surfacing_${Date.now()}`
+  setStatus('Writing to SD card...', '')
   try {
-    for (const line of lines) {
-      await call('sendCommand', { command: line.trim() })
-      await new Promise(r => setTimeout(r, 100))
-    }
-    setStatus('Sent to machine', 'ok')
+    await call('writeFile', { path: `/sd/${name}.nc`, content: generatedCode, fs: 'sd' })
+    setStatus('Running from SD card...', '')
+    await new Promise(r => setTimeout(r, 3000))
+    await call('sendCommand', { command: `$SD/Run=/sd/${name}.nc` })
     setTimeout(() => call('close'), 500)
   } catch (e) {
     setStatus(`Send failed: ${e.message}`, 'err')
