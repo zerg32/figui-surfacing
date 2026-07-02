@@ -385,17 +385,35 @@ function generate() {
       horiz = false
     }
 
+    if (zigzag && pass % 2 === 0) {
+      [rowstart, rowend] = [rowend, rowstart]
+    }
+
     const nrows = Math.ceil(Math.abs(rowend - rowstart) / stepover) + 1
     const rowstep = (rowend - rowstart) / (nrows - 1)
     totalRows += nrows
 
     if (zigzag && nrows > 0) {
-      lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
-      const sX = horiz ? strokestart : rowstart
-      const sY = horiz ? rowstart : strokestart
-      lines.push(`G0 X${fmt(sX)} Y${fmt(sY)} F${p.travel}`)
-      lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
-      lastX = sX; lastY = sY
+      if (pass === 1) {
+        lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
+        const sX = horiz ? strokestart : rowstart
+        const sY = horiz ? rowstart : strokestart
+        lines.push(`G0 X${fmt(sX)} Y${fmt(sY)} F${p.travel}`)
+        lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+        lastX = sX; lastY = sY
+      } else {
+        if (horiz) {
+          lines.push(`G0 X${fmt(strokestart)} F${p.travel}`)
+        } else {
+          lines.push(`G0 Y${fmt(strokestart)} F${p.travel}`)
+        }
+        lines.push(`G1 Z${fmt(currentZ)} F${p.plunge}`)
+        if (horiz) {
+          lastX = strokestart
+        } else {
+          lastY = strokestart
+        }
+      }
     }
 
     for (let row = 0; row < nrows; row++) {
@@ -442,14 +460,6 @@ function generate() {
           lines.push(`G1 Y${fmt(strokeend)} F${p.feedrate}`)
           lastX = rowcoord; lastY = strokeend
         }
-      }
-    }
-
-    if (pass < p.passes) {
-      if (zigzag) {
-        lines.push(`G0 Z${fmt(p.zlift)} F${p.plunge}`)
-      } else {
-        lines.push(`G0 Z${fmt(p.zlift)}`)
       }
     }
   }
